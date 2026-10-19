@@ -1,0 +1,1770 @@
+<!DOCTYPE html>
+<html lang="si">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#0A365C">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>MediDiet Sri Lanka — Mobile Clinical Funnel & SQLite/JSON DB</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Sinhala:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        medinavy: {
+                            DEFAULT: '#0A365C',
+                            dark: '#06233d',
+                            light: '#124e82'
+                        },
+                        medigreen: {
+                            DEFAULT: '#2E7D32',
+                            dark: '#1b5e20',
+                            light: '#4caf50'
+                        },
+                        medislate: '#F1F5F9'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        * {
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            font-family: 'Inter', 'Noto Sans Sinhala', sans-serif;
+            background-color: #0F172A;
+            color: #0F172A;
+            overscroll-behavior-y: none;
+        }
+        .sinhala-font {
+            font-family: 'Noto Sans Sinhala', 'Inter', sans-serif;
+            line-height: 1.65;
+        }
+        /* Hide scrollbars on horizontal pill bars */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        input, select, textarea {
+            font-size: 16px !important; /* Prevents iOS auto-zoom on focus */
+        }
+        .cond-chip.active {
+            background-color: #0A365C;
+            color: #ffffff;
+            border-color: #0A365C;
+            box-shadow: 0 4px 12px rgba(10, 54, 92, 0.25);
+        }
+        .cond-chip.active .chip-check {
+            background-color: #2E7D32;
+            border-color: #4caf50;
+            color: white;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex justify-center bg-slate-900">
+
+    <!-- MOBILE-FIRST APP CONTAINER (Max-W-MD centered on desktop, 100% full width on mobile) -->
+    <div class="w-full max-w-md bg-[#F8FAFC] min-h-screen flex flex-col justify-between relative shadow-2xl pb-24 overflow-x-hidden">
+
+        <header class="bg-medinavy text-white sticky top-0 z-30 shadow-md">
+            <div class="px-3.5 py-2.5 flex items-center justify-between border-b border-white/10">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-9 h-9 rounded-xl bg-medigreen flex items-center justify-center shadow-inner border border-white/20 shrink-0">
+                        <i class="fa-solid fa-user-doctor text-base text-white"></i>
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-1.5">
+                            <h1 class="text-sm font-extrabold tracking-tight">MediDiet Sri Lanka</h1>
+                            <span id="dbStatusBadge" onclick="switchMobileTab('database'); toggleCloudSetupModal();" class="cursor-pointer text-[9px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded-full font-bold border border-emerald-400/30">
+                                SQLite Ready
+                            </span>
+                        </div>
+                        <p class="text-[10px] text-slate-300">Mobile Clinical Funnel • Cloud + Local Hybrid</p>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-1.5">
+                    <button onclick="copyInitialWelcome()" class="bg-white/10 active:bg-white/25 text-white text-[11px] font-bold px-2.5 py-2 rounded-xl flex items-center gap-1 border border-white/15" title="Copy First Inquiry Message">
+                        <i class="fa-regular fa-comment-dots text-emerald-300"></i>
+                        <span>Intake Msg</span>
+                    </button>
+                    <button onclick="resetPatientForm()" class="bg-white/10 active:bg-white/25 text-white text-[11px] font-bold p-2 rounded-xl border border-white/15" title="Reset New Patient">
+                        <i class="fa-solid fa-rotate-left"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Always-Visible Compact Live Clinical Metrics Bar -->
+            <div class="px-3 py-2 bg-medinavy-dark/90 backdrop-blur-md grid grid-cols-3 gap-2 text-center border-b border-white/10">
+                <div class="bg-white/10 rounded-lg py-1.5 px-2 flex flex-col justify-center">
+                    <div class="flex items-center justify-center gap-1">
+                        <span class="text-[9px] uppercase text-slate-300 font-semibold">BMI:</span>
+                        <span id="metricBmi" class="text-sm font-extrabold text-white">28.9</span>
+                    </div>
+                    <span id="asianCategoryBadge" class="text-[9px] font-bold text-amber-300 truncate">Obese Grade 1</span>
+                </div>
+
+                <div class="bg-white/10 rounded-lg py-1.5 px-2 flex flex-col justify-center">
+                    <span class="text-[9px] uppercase text-slate-300 font-semibold">Target Loss</span>
+                    <span id="metricTargetLoss" class="text-sm font-extrabold text-amber-300">16 - 18 kg</span>
+                </div>
+
+                <div class="bg-medigreen/40 rounded-lg py-1.5 px-2 border border-emerald-400/30 flex flex-col justify-center">
+                    <span class="text-[9px] uppercase text-emerald-100 font-semibold">Daily Target</span>
+                    <span class="text-sm font-extrabold text-emerald-300"><span id="metricCalories">1,300</span> kcal</span>
+                </div>
+            </div>
+        </header>
+
+        <main class="flex-1 px-3 pt-3 space-y-3">
+
+            <!-- VIEW 1: PATIENT BIOMETRICS & MULTI-CONDITION INPUT -->
+            <section id="tabViewInput" class="space-y-3">
+
+                <!-- Quick WhatsApp Reply Paste Parser (Mobile Time-Saver) -->
+                <div class="bg-white rounded-2xl p-3 shadow-sm border border-slate-200/90">
+                    <div class="flex items-center justify-between mb-1.5">
+                        <span class="text-xs font-bold text-medinavy flex items-center gap-1.5">
+                            <i class="fa-solid fa-wand-magic-sparkles text-medigreen"></i>
+                            Smart Paste Customer Reply (Optional)
+                        </span>
+                        <button type="button" onclick="clearSmartPaste()" class="text-[11px] text-slate-400 font-medium">Clear</button>
+                    </div>
+                    <textarea id="smartPasteInput" rows="2" oninput="parseCustomerReply(this.value)" placeholder="Paste client's WhatsApp reply here (e.g., Female 32, 158cm 74kg, PCOS & Belly fat)..." class="w-full p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 outline-none focus:border-medinavy"></textarea>
+                </div>
+
+                <!-- Patient Biometrics Card -->
+                <div class="bg-white rounded-2xl p-3.5 shadow-sm border border-slate-200/90 space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <h2 class="font-extrabold text-slate-800 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                            <span class="w-5 h-5 rounded-md bg-medinavy text-white text-[11px] flex items-center justify-center">1</span>
+                            Patient Biometrics
+                        </h2>
+                        <span id="idealWeightSubtext" class="text-[11px] font-bold text-medigreen bg-emerald-50 px-2 py-0.5 rounded-md">Ideal: 56.3 kg</span>
+                    </div>
+
+                    <!-- Name & Phone -->
+                    <div class="grid grid-cols-12 gap-2.5">
+                        <div class="col-span-7">
+                            <label class="block text-[11px] font-bold text-slate-600 mb-1">Client Name</label>
+                            <input type="text" id="clientName" value="Nimali" placeholder="e.g., Nimali" oninput="recalculateAll()" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 font-bold text-slate-800 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-medinavy outline-none">
+                        </div>
+                        <div class="col-span-5">
+                            <label class="block text-[11px] font-bold text-slate-600 mb-1">WhatsApp No</label>
+                            <input type="tel" id="waPhoneInput" placeholder="077xxxxxxx" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 font-semibold text-slate-800 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-medinavy outline-none">
+                        </div>
+                    </div>
+
+                    <!-- Age & Gender -->
+                    <div class="grid grid-cols-12 gap-2.5">
+                        <div class="col-span-5">
+                            <label class="block text-[11px] font-bold text-slate-600 mb-1">Age (Yrs)</label>
+                            <input type="number" id="clientAge" value="30" min="10" max="100" inputmode="numeric" oninput="recalculateAll()" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 font-bold text-slate-800 text-center focus:ring-2 focus:ring-medinavy outline-none">
+                        </div>
+                        <div class="col-span-7">
+                            <label class="block text-[11px] font-bold text-slate-600 mb-1">Gender (ස්ත්‍රී/පුරුෂ)</label>
+                            <div class="grid grid-cols-2 gap-1.5 bg-slate-100 p-1 rounded-xl">
+                                <button type="button" id="genderBtnFemale" onclick="setGender('Female')" class="py-2 rounded-lg text-xs font-extrabold bg-medinavy text-white shadow-sm transition">
+                                    👩 Female
+                                </button>
+                                <button type="button" id="genderBtnMale" onclick="setGender('Male')" class="py-2 rounded-lg text-xs font-bold text-slate-600 transition">
+                                    👨 Male
+                                </button>
+                            </div>
+                            <input type="hidden" id="clientGender" value="Female">
+                        </div>
+                    </div>
+
+                    <!-- Height (with Feet/Inches converter) & Weight -->
+                    <div class="grid grid-cols-2 gap-2.5">
+                        <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                            <div class="flex justify-between items-center mb-1">
+                                <label class="text-[11px] font-bold text-slate-700">Height (cm)</label>
+                                <span id="heightFeetHelper" class="text-[11px] font-extrabold text-medinavy bg-blue-100/80 px-1.5 py-0.5 rounded">≈ 5' 3"</span>
+                            </div>
+                            <input type="number" id="clientHeight" value="160" min="100" max="230" step="0.5" inputmode="decimal" oninput="recalculateAll()" class="w-full px-3 py-2 rounded-lg border border-slate-300 font-extrabold text-slate-900 bg-white outline-none focus:ring-2 focus:ring-medinavy">
+                            <!-- Quick Feet/Inches helper buttons -->
+                            <div class="flex items-center gap-1 mt-1.5 overflow-x-auto no-scrollbar">
+                                <button type="button" onclick="setHeightCm(152)" class="text-[10px] font-bold bg-white border border-slate-200 px-1.5 py-0.5 rounded shrink-0">5'0"</button>
+                                <button type="button" onclick="setHeightCm(155)" class="text-[10px] font-bold bg-white border border-slate-200 px-1.5 py-0.5 rounded shrink-0">5'1"</button>
+                                <button type="button" onclick="setHeightCm(157.5)" class="text-[10px] font-bold bg-white border border-slate-200 px-1.5 py-0.5 rounded shrink-0">5'2"</button>
+                                <button type="button" onclick="setHeightCm(160)" class="text-[10px] font-bold bg-white border border-slate-200 px-1.5 py-0.5 rounded shrink-0">5'3"</button>
+                                <button type="button" onclick="setHeightCm(162.5)" class="text-[10px] font-bold bg-white border border-slate-200 px-1.5 py-0.5 rounded shrink-0">5'4"</button>
+                                <button type="button" onclick="setHeightCm(165)" class="text-[10px] font-bold bg-white border border-slate-200 px-1.5 py-0.5 rounded shrink-0">5'5"</button>
+                                <button type="button" onclick="setHeightCm(167.5)" class="text-[10px] font-bold bg-white border border-slate-200 px-1.5 py-0.5 rounded shrink-0">5'6"</button>
+                            </div>
+                        </div>
+
+                        <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-200 flex flex-col justify-between">
+                            <div>
+                                <div class="flex justify-between items-center mb-1">
+                                    <label class="text-[11px] font-bold text-slate-700">Weight (kg)</label>
+                                    <span class="text-[10px] text-slate-400 font-bold">දැනට බර</span>
+                                </div>
+                                <input type="number" id="clientWeight" value="74" min="30" max="250" step="0.5" inputmode="decimal" oninput="recalculateAll()" class="w-full px-3 py-2 rounded-lg border border-slate-300 font-extrabold text-slate-900 bg-white outline-none focus:ring-2 focus:ring-medinavy">
+                            </div>
+                            <p id="tdeeSubtext" class="text-[10px] text-slate-500 font-semibold mt-1.5">TDEE: 1,703 kcal (-450)</p>
+                        </div>
+                    </div>
+
+                    <!-- MULTI-SELECT CLINICAL CONDITIONS / PRIMARY GOALS -->
+                    <div class="pt-1">
+                        <div class="flex items-center justify-between mb-1.5">
+                            <label class="text-xs font-extrabold text-slate-800">
+                                Clinical Conditions / Goals (කිහිපයක් තෝරන්න පුළුවන්)
+                            </label>
+                            <span id="selectedCondCount" class="text-[10px] font-bold bg-medigreen text-white px-2 py-0.5 rounded-full">1 Selected</span>
+                        </div>
+                        <p class="text-[11px] text-slate-500 mb-2">Tap one or more conditions below to combine them automatically:</p>
+
+                        <div id="multiConditionContainer" class="space-y-1.5">
+                            <!-- Dynamically rendered touch-friendly multi-select chips -->
+                        </div>
+
+                        <!-- Custom extra condition note -->
+                        <div class="mt-2">
+                            <input type="text" id="customConditionInput" oninput="recalculateAll()" placeholder="+ වෙනත් රෝග තත්ත්වයක් ඇත්නම් මෙහි ලියන්න (Optional)..." class="w-full px-3 py-2 rounded-xl border border-dashed border-slate-300 text-xs sinhala-font bg-slate-50/70 focus:bg-white outline-none">
+                        </div>
+                    </div>
+
+                    <!-- Activity, Diet Preference & Package Price -->
+                    <div class="grid grid-cols-1 gap-2.5 pt-1">
+                        <div>
+                            <label class="block text-[11px] font-bold text-slate-600 mb-1">Dietary Preference (ආහාර රටාව)</label>
+                            <select id="dietPreference" onchange="recalculateAll()" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-bold text-slate-800 sinhala-font outline-none">
+                                <option value="Non-Vegetarian (මස්, මාළු, බිත්තර ගනී)" selected>🍗 Non-Vegetarian (මස්, මාළු, බිත්තර ගනී)</option>
+                                <option value="මාළු සහ බිත්තර පමණයි (No Meat)">🐟 මාළු සහ බිත්තර පමණයි (No Meat)</option>
+                                <option value="නිර්මාංශ (Pure Vegetarian)">🥬 නිර්මාංශ (Pure Vegetarian)</option>
+                            </select>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2.5">
+                            <div>
+                                <label class="block text-[11px] font-bold text-slate-600 mb-1">Activity Level</label>
+                                <select id="activityLevel" onchange="recalculateAll()" class="w-full px-2.5 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-bold text-slate-800 outline-none">
+                                    <option value="1.2" selected>Sedentary [1.2]</option>
+                                    <option value="1.35">Light Active [1.35]</option>
+                                    <option value="1.5">Active [1.5]</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-bold text-slate-600 mb-1">Package Price</label>
+                                <select id="packagePrice" onchange="recalculateAll()" class="w-full px-2.5 py-2.5 rounded-xl border border-emerald-400 bg-emerald-50 text-xs font-extrabold text-medigreen outline-none">
+                                    <option value="2,500" selected>Rs. 2,500/-</option>
+                                    <option value="3,500">Rs. 3,500/-</option>
+                                    <option value="4,500">Rs. 4,500/-</option>
+                                    <option value="1,950">Rs. 1,950/-</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Save to SQLite/JSON Database Button & Jump to Script -->
+                    <div class="pt-2 border-t border-slate-100 flex items-center gap-2">
+                        <select id="clientStatusSelect" class="px-2.5 py-3 rounded-xl border border-slate-300 bg-slate-50 text-xs font-bold text-slate-700 outline-none">
+                            <option value="Pending">⏳ Pending</option>
+                            <option value="Paid">✅ Paid</option>
+                        </select>
+
+                        <button type="button" onclick="saveClientToDatabase()" class="flex-1 bg-medinavy active:scale-[0.98] text-white text-xs font-extrabold py-3 px-3 rounded-xl shadow-md flex items-center justify-center gap-1.5 transition">
+                            <i class="fa-solid fa-database text-emerald-300"></i>
+                            <span>Save to DB</span>
+                        </button>
+
+                        <button type="button" onclick="switchMobileTab('scripts')" class="bg-medigreen active:scale-[0.98] text-white text-xs font-extrabold py-3 px-3.5 rounded-xl shadow-md flex items-center justify-center gap-1.5 transition">
+                            <span>Scripts</span>
+                            <i class="fa-solid fa-arrow-right"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Collapsible Bank Account Settings -->
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200/90 overflow-hidden">
+                    <button type="button" onclick="toggleBankPanel()" class="w-full px-4 py-3 bg-slate-50 flex items-center justify-between text-left">
+                        <div class="flex items-center gap-2">
+                            <i class="fa-solid fa-building-columns text-medinavy text-sm"></i>
+                            <div>
+                                <h3 class="text-xs font-extrabold text-slate-800">Bank Account Details</h3>
+                                <p class="text-[10px] text-slate-500">Auto-saved for GitHub Pages</p>
+                            </div>
+                        </div>
+                        <i id="bankCollapseIcon" class="fa-solid fa-chevron-down text-xs text-slate-500 transition-transform"></i>
+                    </button>
+
+                    <div id="bankDetailsBody" class="hidden p-3.5 border-t border-slate-100 space-y-2.5 bg-white">
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Bank Name</label>
+                            <input type="text" id="bankName" value="People's Bank" oninput="saveBankAndRefresh()" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Account Number</label>
+                            <input type="text" id="bankAccNo" value="068100110085332" oninput="saveBankAndRefresh()" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-mono font-bold">
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Account Name</label>
+                                <input type="text" id="bankAccName" value="DAWNNEX Medical Team" oninput="saveBankAndRefresh()" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Branch</label>
+                                <input type="text" id="bankBranch" value="Monaragala" oninput="saveBankAndRefresh()" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- VIEW 2: WHATSAPP FUNNEL SCRIPTS & AI MASTER PROMPT -->
+            <section id="tabViewScripts" class="space-y-3 hidden">
+
+                <!-- 9 Scenario Touch Selector -->
+                <div class="bg-white rounded-2xl p-3 shadow-sm border border-slate-200/90">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
+                            <span class="w-5 h-5 rounded-md bg-medigreen text-white text-[11px] flex items-center justify-center">2</span>
+                            Select Funnel Stage (1 - 9)
+                        </span>
+                        <span id="activeScenarioLabel" class="text-[10px] font-bold text-medinavy bg-slate-100 px-2 py-0.5 rounded-md">
+                            #1 Prescription Close
+                        </span>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-1.5">
+                        <button type="button" onclick="selectScenario(1)" id="scenBtn1" class="scenario-btn text-left px-2.5 py-2.5 rounded-xl text-[11px] font-bold border transition flex items-center gap-1.5">
+                            <span>🩺</span><span class="truncate">1. Main Close</span>
+                        </button>
+                        <button type="button" onclick="selectScenario(2)" id="scenBtn2" class="scenario-btn text-left px-2.5 py-2.5 rounded-xl text-[11px] font-bold border transition flex items-center gap-1.5">
+                            <span>🛡️</span><span class="truncate">2. Price Gate</span>
+                        </button>
+                        <button type="button" onclick="selectScenario(3)" id="scenBtn3" class="scenario-btn text-left px-2.5 py-2.5 rounded-xl text-[11px] font-bold border transition flex items-center gap-1.5">
+                            <span>👻</span><span class="truncate">3. Ghost Intake (3h)</span>
+                        </button>
+                        <button type="button" onclick="selectScenario(4)" id="scenBtn4" class="scenario-btn text-left px-2.5 py-2.5 rounded-xl text-[11px] font-bold border transition flex items-center gap-1.5">
+                            <span>👀</span><span class="truncate">4. Seen/No Reply (4h)</span>
+                        </button>
+                        <button type="button" onclick="selectScenario(5)" id="scenBtn5" class="scenario-btn text-left px-2.5 py-2.5 rounded-xl text-[11px] font-bold border transition flex items-center gap-1.5">
+                            <span>⏳</span><span class="truncate">5. Slot Close (24h)</span>
+                        </button>
+                        <button type="button" onclick="selectScenario(6)" id="scenBtn6" class="scenario-btn text-left px-2.5 py-2.5 rounded-xl text-[11px] font-bold border transition flex items-center gap-1.5">
+                            <span>💸</span><span class="truncate">6. Split Pay 1,500/-</span>
+                        </button>
+                        <button type="button" onclick="selectScenario(7)" id="scenBtn7" class="scenario-btn text-left px-2.5 py-2.5 rounded-xl text-[11px] font-bold border transition flex items-center gap-1.5">
+                            <span>🤔</span><span class="truncate">7. Trust ("අඩු වෙයිද?")</span>
+                        </button>
+                        <button type="button" onclick="selectScenario(8)" id="scenBtn8" class="scenario-btn text-left px-2.5 py-2.5 rounded-xl text-[11px] font-bold border transition flex items-center gap-1.5">
+                            <span>✅</span><span class="truncate">8. Slip Received</span>
+                        </button>
+
+                        <!-- Button 9: Distinct Gold/Orange AI Master Prompt -->
+                        <button type="button" onclick="selectScenario(9)" id="scenBtn9" class="col-span-2 px-3 py-3 rounded-xl text-xs font-extrabold border-2 border-amber-500 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-white shadow-md flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-robot"></i>
+                            <span>🤖 9. GENERATE AI MASTER PROMPT (5-Page PDF)</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Live Script Output Card -->
+                <div class="bg-white rounded-2xl shadow-md border border-slate-200 overflow-hidden">
+                    <div id="outputHeaderBar" class="bg-medinavy text-white px-3.5 py-2.5 flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <i id="outputHeaderIcon" class="fa-brands fa-whatsapp text-base text-emerald-400"></i>
+                            <div>
+                                <h3 id="outputHeaderTitle" class="text-xs font-extrabold leading-tight">Live WhatsApp Script</h3>
+                                <p class="text-[10px] text-slate-300">Tap text to edit before copying</p>
+                            </div>
+                        </div>
+                        <span id="charCounter" class="text-[10px] bg-black/25 px-2 py-0.5 rounded-full font-mono">0 chars</span>
+                    </div>
+
+                    <div class="p-3 bg-[#efeae2]">
+                        <div id="messageBubbleWrapper" class="bg-[#dcf8c6] rounded-2xl rounded-tl-none p-3 shadow-sm border border-emerald-300/60">
+                            <textarea id="mainOutputTextarea" rows="13" oninput="updateCharCount()" class="w-full bg-transparent border-0 focus:ring-0 outline-none text-xs sinhala-font text-slate-800 resize-y"></textarea>
+                        </div>
+                    </div>
+
+                    <!-- Voice Note Teleprompter & Sri Lankan Sales Psychology Box -->
+                    <div id="voiceStrategyCard" class="mx-3 mb-3 rounded-2xl border border-amber-300 bg-gradient-to-br from-amber-50 to-orange-50/70 p-3 shadow-sm space-y-2">
+                        <div class="flex items-center justify-between">
+                            <span class="text-[11px] font-extrabold text-amber-900 flex items-center gap-1.5">
+                                <i class="fa-solid fa-microphone-lines text-rose-600 animate-pulse"></i>
+                                <span id="voiceBadgeTitle">VOICE NOTE STRATEGY (අනිවාර්යයෙන් බලන්න)</span>
+                            </span>
+                            <span id="voicePriorityBadge" class="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-rose-600 text-white">
+                                High Conversion
+                            </span>
+                        </div>
+                        <p id="psychTipText" class="text-[11px] text-slate-700 sinhala-font leading-relaxed font-medium"></p>
+                        <div id="voiceScriptBox" class="bg-white/90 rounded-xl p-2.5 border border-amber-200">
+                            <div class="flex items-center justify-between mb-1">
+                                <span class="text-[10px] font-extrabold text-medinavy uppercase">🎙️ තත්පර 25 Voice Note Script (බලාගෙන කියවන්න):</span>
+                                <button type="button" onclick="copyVoiceScript()" class="text-[10px] font-bold text-medigreen underline">Copy</button>
+                            </div>
+                            <p id="voiceTeleprompterText" class="text-xs sinhala-font font-bold text-slate-800 leading-relaxed"></p>
+                        </div>
+                    </div>
+
+                    <!-- Sticky Mobile Action Buttons for Copy & WhatsApp -->
+                    <div class="p-3 bg-white border-t border-slate-100 grid grid-cols-12 gap-2">
+                        <button type="button" onclick="copyMainOutput()" class="col-span-7 py-3.5 px-3 bg-medigreen active:scale-[0.98] text-white font-extrabold rounded-xl shadow-md flex items-center justify-center gap-2 text-xs">
+                            <i class="fa-regular fa-copy text-sm"></i>
+                            <span>Copy Script</span>
+                        </button>
+
+                        <button type="button" onclick="sendToWhatsApp()" class="col-span-5 py-3.5 px-3 bg-[#25D366] active:scale-[0.98] text-white font-extrabold rounded-xl shadow-md flex items-center justify-center gap-1.5 text-xs">
+                            <i class="fa-brands fa-whatsapp text-base"></i>
+                            <span>Send WA</span>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- VIEW 3: PORTABLE SQLITE & JSON DATABASE MANAGER -->
+            <section id="tabViewDatabase" class="space-y-3 hidden">
+
+                <!-- GOOGLE SHEETS CLOUD SYNC CARD (100% Free Serverless Backend) -->
+                <div class="bg-white rounded-2xl p-3.5 shadow-sm border-2 border-emerald-500/40 space-y-2.5">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <div class="w-8 h-8 rounded-xl bg-emerald-100 text-medigreen flex items-center justify-center font-bold">
+                                <i class="fa-solid fa-cloud-arrow-up text-sm"></i>
+                            </div>
+                            <div>
+                                <div class="flex items-center gap-1.5">
+                                    <h2 class="text-xs font-extrabold text-slate-800">Google Sheets Cloud DB</h2>
+                                    <span id="cloudConnPill" class="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">Not Linked</span>
+                                </div>
+                                <p class="text-[10px] text-slate-500">Auto-saves patients to your Google Drive Excel sheet</p>
+                            </div>
+                        </div>
+                        <button type="button" onclick="toggleCloudSetupModal()" class="text-[11px] font-extrabold bg-slate-100 hover:bg-slate-200 text-medinavy px-2.5 py-1.5 rounded-xl">
+                            <i class="fa-solid fa-gear mr-1"></i>Setup
+                        </button>
+                    </div>
+
+                    <div class="flex items-center gap-1.5">
+                        <input type="url" id="googleSheetWebhookInput" oninput="saveWebhookUrl()" placeholder="Paste Google Apps Script Web App URL here..." class="flex-1 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-[11px] font-mono text-slate-700 outline-none focus:border-medigreen">
+                        <button type="button" onclick="fetchAllFromGoogleSheet()" class="bg-medigreen active:scale-95 text-white text-[11px] font-extrabold px-3 py-2 rounded-xl shrink-0 flex items-center gap-1 shadow-sm" title="Pull latest records from Google Sheet">
+                            <i id="cloudSyncSpinner" class="fa-solid fa-rotate"></i>
+                            <span>Sync</span>
+                        </button>
+                    </div>
+
+                    <!-- Collapsible 1-Minute Google Sheet Setup Guide & Script -->
+                    <div id="cloudSetupBox" class="hidden pt-2 border-t border-slate-100 space-y-2 text-[11px] text-slate-600">
+                        <div class="bg-emerald-50/80 border border-emerald-200 rounded-xl p-2.5 space-y-1.5">
+                            <p class="font-extrabold text-medinavy text-xs">🚀 විනාඩි 2න් Google Sheet එක සම්බන්ධ කරන හැටි:</p>
+                            <ol class="list-decimal list-inside space-y-1 text-[11px] sinhala-font">
+                                <li>අලුත් <b>Google Sheet</b> එකක් හදාගෙන උඩ Menu එකේ <b>Extensions → Apps Script</b> යන්න.</li>
+                                <li>එතන තියෙන කෝඩ් එක මකලා, පහත <b>"Copy Apps Script Code"</b> බටන් එකෙන් කෝඩ් එක Copy කරලා Paste කරන්න.</li>
+                                <li>උඩ දකුණු පැත්තේ <b>Deploy → New deployment</b> ඔබන්න.</li>
+                                <li>Select type එකට <b>Web app</b> දීලා, <i>Who has access</i> තැනට <b>"Anyone"</b> තෝරලා Deploy කරන්න.</li>
+                                <li>ලැබෙන <b>Web App URL</b> එක උඩ කොටුවට Paste කරන්න!</li>
+                            </ol>
+                            <button type="button" onclick="copyGoogleAppsScriptCode()" class="w-full mt-1 py-2 bg-medinavy text-white rounded-xl font-extrabold text-xs flex items-center justify-center gap-1.5 shadow">
+                                <i class="fa-regular fa-copy text-emerald-300"></i>
+                                <span>Copy Google Apps Script Code</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Portable Database Controls (JSON & SQLite Export/Import for GitHub Pages) -->
+                <div class="bg-gradient-to-br from-medinavy to-medinavy-light text-white rounded-2xl p-3.5 shadow-md space-y-2.5">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <i class="fa-solid fa-database text-emerald-400 text-base"></i>
+                            <div>
+                                <h2 class="text-xs font-extrabold uppercase tracking-wider">SQLite + JSON Portable DB</h2>
+                                <p class="text-[10px] text-slate-300">Works 100% on GitHub Pages • Backup & Restore</p>
+                            </div>
+                        </div>
+                        <span id="crmCountBadge" class="text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-white/15 text-emerald-300">0 Records</span>
+                    </div>
+
+                    <div class="grid grid-cols-3 gap-1.5 pt-1">
+                        <button type="button" onclick="exportJsonDatabase()" class="bg-white/10 active:bg-white/25 py-2 px-2 rounded-xl text-[11px] font-bold flex flex-col items-center gap-1 border border-white/15">
+                            <i class="fa-solid fa-file-code text-amber-300 text-sm"></i>
+                            <span>Export .JSON</span>
+                        </button>
+                        <button type="button" onclick="exportSqliteDatabase()" class="bg-white/10 active:bg-white/25 py-2 px-2 rounded-xl text-[11px] font-bold flex flex-col items-center gap-1 border border-white/15">
+                            <i class="fa-solid fa-hard-drive text-emerald-300 text-sm"></i>
+                            <span>Export .SQLite</span>
+                        </button>
+                        <label class="bg-white/10 active:bg-white/25 py-2 px-2 rounded-xl text-[11px] font-bold flex flex-col items-center gap-1 border border-white/15 cursor-pointer text-center">
+                            <i class="fa-solid fa-file-arrow-up text-sky-300 text-sm"></i>
+                            <span>Import DB</span>
+                            <input type="file" id="dbImportFile" accept=".json,.sqlite,.db" onchange="importDatabaseFile(event)" class="hidden">
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Search & Filter Bar -->
+                <div class="flex items-center gap-2">
+                    <div class="relative flex-1">
+                        <i class="fa-solid fa-magnifying-glass absolute left-3 top-3 text-slate-400 text-xs"></i>
+                        <input type="text" id="crmSearchInput" oninput="renderCrmCards()" placeholder="Search patient name or condition..." class="w-full pl-8 pr-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-semibold outline-none">
+                    </div>
+                    <button type="button" onclick="clearAllCrmClients()" class="px-3 py-2.5 rounded-xl bg-rose-50 text-rose-600 text-xs font-bold border border-rose-200">
+                        <i class="fa-regular fa-trash-can"></i>
+                    </button>
+                </div>
+
+                <!-- Mobile Patient Cards List -->
+                <div id="crmMobileList" class="space-y-2.5 pb-4">
+                    <!-- Populated dynamically from SQLite / LocalStorage -->
+                </div>
+            </section>
+
+        </main>
+
+        <!-- FIXED BOTTOM NAVIGATION BAR (100% Mobile Ergonomic) -->
+        <nav class="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white border-t border-slate-200 shadow-2xl z-40 grid grid-cols-3 py-1.5 px-2">
+            <button type="button" id="navBtnInput" onclick="switchMobileTab('input')" class="flex flex-col items-center justify-center py-1.5 rounded-xl text-medinavy font-extrabold transition">
+                <i class="fa-solid fa-sliders text-base mb-0.5"></i>
+                <span class="text-[11px]">1. Patient Data</span>
+            </button>
+
+            <button type="button" id="navBtnScripts" onclick="switchMobileTab('scripts')" class="flex flex-col items-center justify-center py-1.5 rounded-xl text-slate-400 font-bold transition relative">
+                <i class="fa-brands fa-whatsapp text-base mb-0.5"></i>
+                <span class="text-[11px]">2. Scripts & AI</span>
+            </button>
+
+            <button type="button" id="navBtnDatabase" onclick="switchMobileTab('database')" class="flex flex-col items-center justify-center py-1.5 rounded-xl text-slate-400 font-bold transition relative">
+                <i class="fa-solid fa-database text-base mb-0.5"></i>
+                <span class="text-[11px]">3. Client DB (<span id="navDbCount">0</span>)</span>
+            </button>
+        </nav>
+
+    </div>
+
+    <!-- Floating Toast Notification -->
+    <div id="toastBox" class="fixed top-16 left-1/2 -translate-x-1/2 z-50 transform -translate-y-20 opacity-0 transition-all duration-300 pointer-events-none w-11/12 max-w-xs">
+        <div class="bg-medinavy text-white px-4 py-3 rounded-2xl shadow-2xl flex items-center justify-center gap-2.5 border border-white/20 text-center">
+            <div class="w-5 h-5 rounded-full bg-medigreen text-white flex items-center justify-center shrink-0">
+                <i class="fa-solid fa-check text-[10px]"></i>
+            </div>
+            <span id="toastText" class="text-xs font-extrabold">Copied!</span>
+        </div>
+    </div>
+
+    <!-- Hidden textarea for Initial Intake Greeting copy -->
+    <textarea id="hiddenIntakeGreeting" class="hidden">ආයුබෝවන්! MediDiet Sri Lanka වෙත සාදරයෙන් පිළිගනිමු. 🩺🇱🇰
+
+අපි හදන්නේ හැමෝටම දෙන පොදු Diet Plan එකක් නෙවෙයි, ඔයාගේ ඇඟේ දත්ත (BMI සහ Calories) වලට 100%ක් ගැලපෙන Personal Medical Meal Plan එකක්. 
+
+ඒ නිසා ඔයාට හරියටම ගැලපෙන Plan එකයි Package එකයි බලන්න අපේ Medical Team එකට මේ පොඩි විස්තර ටික එවන්න පුළුවන්ද? 👇
+
+1. ස්ත්‍රී/පුරුෂ භාවය සහ වයස:
+2. උස සහ දැනට බර (දන්න විදිහට දාන්න):
+3. ප්‍රධානම Target එක: (උදා: බර සහ Belly Fat අඩු කරගන්න / PCOS / Fatty Liver / Cholesterol / බබා ලැබුණට පස්සේ වැඩිවුණ බර)
+4. කෑම ගැන: (මස්, මාළු, බිත්තර ඕන එකක් කනවද? නැත්නම් Vegetarian ද?)
+5. මෑතකදී ගත්ත Blood Reports තියෙනවා නම් විතරක් පොඩි Photo එකක් දාන්න (අනිවාර්ය නෑ).
+
+ඔයා මේ විස්තර ටික දැම්ම ගමන් අපි ඔයාගේ BMI Checkup එක කරලා සම්පූර්ණ විස්තරේ එවනවා! 🥗✨</textarea>
+
+    <!-- Hidden textarea for Google Apps Script Backend Code -->
+    <textarea id="hiddenAppsScriptCode" class="hidden">function doPost(e) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(["ID", "SavedAt", "Name", "Phone", "Status", "Price", "Age", "Gender", "Height_cm", "Weight_kg", "BMI", "CalorieTarget", "Condition", "DietPref", "SelectedIdsJSON"]);
+  }
+  var data = JSON.parse(e.postData.contents);
+  
+  if (data.action === "upsert") {
+    var c = data.client;
+    var values = sheet.getDataRange().getValues();
+    var updated = false;
+    for (var i = 1; i < values.length; i++) {
+      if (String(values[i][0]) === String(c.id) || (values[i][2] && String(values[i][2]).toLowerCase() === String(c.name).toLowerCase())) {
+        sheet.getRange(i + 1, 1, 1, 15).setValues([[c.id, c.savedAt, c.name, c.phone, c.status, c.price, c.age, c.gender, c.height, c.weight, c.bmi, c.calorieTarget, c.condition, c.dietPref, JSON.stringify(c.selectedIds || [])]]);
+        updated = true;
+        break;
+      }
+    }
+    if (!updated) {
+      sheet.appendRow([c.id, c.savedAt, c.name, c.phone, c.status, c.price, c.age, c.gender, c.height, c.weight, c.bmi, c.calorieTarget, c.condition, c.dietPref, JSON.stringify(c.selectedIds || [])]);
+    }
+    return ContentService.createTextOutput(JSON.stringify({ status: "ok" })).setMimeType(ContentService.MimeType.JSON);
+  }
+  return ContentService.createTextOutput(JSON.stringify({ status: "ignored" })).setMimeType(ContentService.MimeType.JSON);
+}
+
+function doGet(e) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var rows = sheet.getDataRange().getValues();
+  var clients = [];
+  for (var i = 1; i < rows.length; i++) {
+    var r = rows[i];
+    if (!r[2]) continue;
+    var sIds = ["belly"];
+    try { sIds = JSON.parse(r[14] || '["belly"]'); } catch(err) {}
+    clients.push({
+      id: String(r[0]),
+      savedAt: String(r[1]),
+      name: String(r[2]),
+      phone: String(r[3] || ""),
+      status: String(r[4] || "Pending"),
+      price: String(r[5] || "2,500"),
+      age: Number(r[6] || 30),
+      gender: String(r[7] || "Female"),
+      height: Number(r[8] || 160),
+      weight: Number(r[9] || 70),
+      bmi: String(r[10] || "27.3"),
+      calorieTarget: Number(r[11] || 1300),
+      condition: String(r[12] || ""),
+      dietPref: String(r[13] || ""),
+      activity: "1.2",
+      selectedIds: sIds
+    });
+  }
+  return ContentService.createTextOutput(JSON.stringify({ status: "ok", clients: clients.reverse() })).setMimeType(ContentService.MimeType.JSON);
+}</textarea>
+
+    <script>
+        // Storage keys for GitHub Pages static persistence
+        const STORAGE_KEY_BANK = 'medidiet_sl_bank_v3';
+        const STORAGE_KEY_CRM_JSON = 'medidiet_sl_crm_json_v3';
+        const STORAGE_KEY_SQLITE_B64 = 'medidiet_sl_sqlite_b64_v3';
+        const STORAGE_KEY_GSHEET_URL = 'medidiet_sl_gsheet_url_v3';
+
+        // Available Clinical Conditions (Multi-Select Enabled)
+        const CLINICAL_CONDITIONS = [
+            { id: 'belly', label: 'Belly Fat එක (උදරය වටා තෙල්) සහ වැඩි බර', short: 'Belly Fat' },
+            { id: 'pcos', label: 'PCOS / PCOD සහ Insulin Resistance තත්ත්වය', short: 'PCOS / PCOD' },
+            { id: 'fattyliver', label: 'Fatty Liver (අක්මාවේ තෙල් තැන්පත් වීම)', short: 'Fatty Liver' },
+            { id: 'cholesterol', label: 'Cholesterol සහ Triglycerides මට්ටම', short: 'Cholesterol' },
+            { id: 'postpreg', label: 'බබා ලැබුණට පස්සේ වැඩි වුණ බර (Post-Pregnancy Weight)', short: 'Post-Pregnancy' },
+            { id: 'diabetes', label: 'Blood Sugar මට්ටම (Pre-Diabetes / Sugar Control)', short: 'Pre-Diabetes / Sugar' }
+        ];
+
+        // Selected Condition IDs (Allows choosing multiple)
+        let selectedConditionIds = ['belly'];
+
+        // SQLite In-Browser Instance
+        let sqliteDb = null;
+        let SQL_ENGINE = null;
+
+        // Application State
+        let activeScenario = 1;
+        let calculatedState = {
+            name: 'Nimali',
+            rawNameOnly: 'Nimali',
+            phone: '',
+            age: 30,
+            gender: 'Female',
+            height: 160,
+            weight: 74,
+            activity: 1.2,
+            condition: 'උදරය වටා මේදය (Belly Fat) සහ වැඩි බර',
+            selectedIds: ['belly'],
+            dietPref: 'Non-Vegetarian (මස්, මාළු, බිත්තර ගනී)',
+            price: '2,500',
+            bmi: '28.9',
+            category: 'Obese Grade 1 (තරබාරු කාණ්ඩය 1)',
+            targetLoss: '16 - 18',
+            calorieTarget: 1300,
+            bmr: 1419,
+            tdee: 1703
+        };
+
+        let crmClients = [];
+
+        // Safe Storage Helpers
+        function safeGetStorage(key) {
+            try { return window.localStorage.getItem(key); } catch (e) { return null; }
+        }
+        function safeSetStorage(key, value) {
+            try { window.localStorage.setItem(key, value); } catch (e) {}
+        }
+
+        // Mobile Tab Navigation
+        function switchMobileTab(tabName) {
+            const views = {
+                input: document.getElementById('tabViewInput'),
+                scripts: document.getElementById('tabViewScripts'),
+                database: document.getElementById('tabViewDatabase')
+            };
+            const btns = {
+                input: document.getElementById('navBtnInput'),
+                scripts: document.getElementById('navBtnScripts'),
+                database: document.getElementById('navBtnDatabase')
+            };
+
+            Object.keys(views).forEach(k => {
+                if (k === tabName) {
+                    views[k].classList.remove('hidden');
+                    btns[k].className = 'flex flex-col items-center justify-center py-1.5 rounded-xl text-medinavy bg-blue-50/80 font-extrabold transition';
+                } else {
+                    views[k].classList.add('hidden');
+                    btns[k].className = 'flex flex-col items-center justify-center py-1.5 rounded-xl text-slate-400 font-bold transition';
+                }
+            });
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        // Render Multi-Select Condition Chips
+        function renderConditionChips() {
+            const container = document.getElementById('multiConditionContainer');
+            container.innerHTML = CLINICAL_CONDITIONS.map((c, idx) => {
+                const isSelected = selectedConditionIds.includes(c.id);
+                return `
+                    <button type="button" onclick="toggleCondition('${c.id}')" class="cond-chip ${isSelected ? 'active' : 'bg-slate-50 text-slate-800 border-slate-200'} w-full text-left px-3 py-2.5 rounded-xl border text-xs font-bold sinhala-font transition flex items-center justify-between gap-2">
+                        <span class="leading-snug">${idx + 1}. ${c.label}</span>
+                        <span class="chip-check w-5 h-5 rounded-full border border-slate-300 flex items-center justify-center shrink-0 text-[10px]">
+                            ${isSelected ? '<i class="fa-solid fa-check"></i>' : ''}
+                        </span>
+                    </button>
+                `;
+            }).join('');
+
+            document.getElementById('selectedCondCount').textContent = `${selectedConditionIds.length} Selected`;
+        }
+
+        // Toggle one or multiple conditions
+        function toggleCondition(id) {
+            if (selectedConditionIds.includes(id)) {
+                // Keep at least 1 condition selected
+                if (selectedConditionIds.length > 1) {
+                    selectedConditionIds = selectedConditionIds.filter(item => item !== id);
+                } else {
+                    showToast('අවම වශයෙන් එක් ඉලක්කයක් හෝ තෝරන්න');
+                }
+            } else {
+                selectedConditionIds.push(id);
+            }
+            renderConditionChips();
+            recalculateAll();
+        }
+
+        function getCombinedConditionText() {
+            const labels = CLINICAL_CONDITIONS
+                .filter(c => selectedConditionIds.includes(c.id))
+                .map(c => c.label);
+            const custom = document.getElementById('customConditionInput').value.trim();
+            if (custom) labels.push(custom);
+            return labels.join(' සහ ');
+        }
+
+        // Gender & Quick Height Helpers
+        function setGender(g) {
+            document.getElementById('clientGender').value = g;
+            const fBtn = document.getElementById('genderBtnFemale');
+            const mBtn = document.getElementById('genderBtnMale');
+            if (g === 'Female') {
+                fBtn.className = 'py-2 rounded-lg text-xs font-extrabold bg-medinavy text-white shadow-sm transition';
+                mBtn.className = 'py-2 rounded-lg text-xs font-bold text-slate-600 transition';
+            } else {
+                mBtn.className = 'py-2 rounded-lg text-xs font-extrabold bg-medinavy text-white shadow-sm transition';
+                fBtn.className = 'py-2 rounded-lg text-xs font-bold text-slate-600 transition';
+            }
+            recalculateAll();
+        }
+
+        function setHeightCm(cm) {
+            document.getElementById('clientHeight').value = cm;
+            recalculateAll();
+        }
+
+        // Smart Paste Parser for Customer Replies
+        function parseCustomerReply(text) {
+            if (!text || text.trim().length < 3) return;
+            const lower = text.toLowerCase();
+
+            // Gender detection
+            if (lower.includes('male') && !lower.includes('female') || text.includes('පුරුෂ')) {
+                setGender('Male');
+            } else if (lower.includes('female') || text.includes('ස්ත්‍රී') || text.includes('ගැහැණු')) {
+                setGender('Female');
+            }
+
+            // Age detection
+            const ageMatch = text.match(/(?:වයස|age)[:\s-]*(\d{2})/i) || text.match(/\b(1[89]|[2-6]\d)\s*(?:yrs|years|y|වයස)/i);
+            if (ageMatch) document.getElementById('clientAge').value = ageMatch[1];
+
+            // Height detection (cm or feet/inches)
+            const cmMatch = text.match(/(\d{3}(?:\.\d+)?)\s*cm/i);
+            const ftMatch = text.match(/([456])\s*(?:ft|feet|'|අඩි)\s*(\d{1,2})?/i);
+            if (cmMatch) {
+                document.getElementById('clientHeight').value = parseFloat(cmMatch[1]);
+            } else if (ftMatch) {
+                const ft = parseInt(ftMatch[1], 10);
+                const inc = ftMatch[2] ? parseInt(ftMatch[2], 10) : 0;
+                document.getElementById('clientHeight').value = Math.round(((ft * 12) + inc) * 2.54);
+            }
+
+            // Weight detection
+            const kgMatch = text.match(/(\d{2,3}(?:\.\d+)?)\s*(?:kg|කිලෝ|බර)/i);
+            if (kgMatch) {
+                document.getElementById('clientWeight').value = parseFloat(kgMatch[1]);
+            }
+
+            // Multi-condition detection from pasted text
+            const matchedConds = [];
+            if (lower.includes('belly') || text.includes('බඩ') || text.includes('බර')) matchedConds.push('belly');
+            if (lower.includes('pcos') || lower.includes('pcod')) matchedConds.push('pcos');
+            if (lower.includes('fatty') || lower.includes('liver') || text.includes('අක්මා')) matchedConds.push('fattyliver');
+            if (lower.includes('cholesterol') || text.includes('කොලෙස්ටරෝල්')) matchedConds.push('cholesterol');
+            if (lower.includes('preg') || lower.includes('baby') || text.includes('දරු')) matchedConds.push('postpreg');
+            if (lower.includes('sugar') || lower.includes('diabet') || text.includes('සීනි')) matchedConds.push('diabetes');
+
+            if (matchedConds.length > 0) {
+                selectedConditionIds = matchedConds;
+                renderConditionChips();
+            }
+
+            recalculateAll();
+        }
+
+        function clearSmartPaste() {
+            document.getElementById('smartPasteInput').value = '';
+        }
+
+        function recalculateAll() {
+            const rawName = document.getElementById('clientName').value.trim();
+            const phone = document.getElementById('waPhoneInput').value.trim();
+            const age = parseFloat(document.getElementById('clientAge').value) || 30;
+            const gender = document.getElementById('clientGender').value;
+            const height = parseFloat(document.getElementById('clientHeight').value) || 160;
+            const weight = parseFloat(document.getElementById('clientWeight').value) || 70;
+            const activity = parseFloat(document.getElementById('activityLevel').value) || 1.2;
+            const condition = getCombinedConditionText();
+            const dietPref = document.getElementById('dietPreference').value;
+            const price = document.getElementById('packagePrice').value;
+
+            // Update Feet & Inches helper
+            const totalInches = height / 2.54;
+            const ft = Math.floor(totalInches / 12);
+            const inches = Math.round(totalInches % 12);
+            document.getElementById('heightFeetHelper').textContent = `≈ ${ft}' ${inches}"`;
+
+            // 1. BMI Calculation
+            const heightMeters = height / 100;
+            const bmiVal = heightMeters > 0 ? weight / (heightMeters * heightMeters) : 0;
+            const bmiFormatted = bmiVal.toFixed(1);
+
+            // 2. Asian BMI Category
+            let category = '';
+            let shortCat = '';
+            const badge = document.getElementById('asianCategoryBadge');
+            if (bmiVal < 23) {
+                category = 'Normal / Mild Toning';
+                shortCat = 'Normal / Toning';
+                badge.className = 'text-[9px] font-bold text-emerald-300 truncate';
+            } else if (bmiVal < 25) {
+                category = 'Overweight (අධික බර)';
+                shortCat = 'Overweight';
+                badge.className = 'text-[9px] font-bold text-yellow-300 truncate';
+            } else if (bmiVal < 30) {
+                category = 'Obese Grade 1 (තරබාරු කාණ්ඩය 1)';
+                shortCat = 'Obese Grade 1';
+                badge.className = 'text-[9px] font-bold text-amber-300 truncate';
+            } else {
+                category = 'Obese Grade 2 (අධික තරබාරු)';
+                shortCat = 'Obese Grade 2';
+                badge.className = 'text-[9px] font-bold text-rose-300 truncate';
+            }
+            badge.textContent = shortCat;
+
+            // 3. Target Weight Loss Range at Ideal BMI 22.0
+            const idealWeight = 22.0 * (heightMeters * heightMeters);
+            const rawDiff = weight - idealWeight;
+            let targetLossRange = '3 - 5';
+            if (rawDiff > 3) {
+                const lowRange = Math.max(2, Math.floor(rawDiff - 1));
+                const highRange = Math.ceil(rawDiff + 1);
+                targetLossRange = `${lowRange} - ${highRange}`;
+            }
+
+            // 4. Daily Calorie Target (Mifflin-St Jeor Equation)
+            const bmr = (10 * weight) + (6.25 * height) - (5 * age) + (gender === 'Male' ? 5 : -161);
+            const tdee = bmr * activity;
+            const rawDeficit = tdee - 450;
+            const rounded50 = Math.round(rawDeficit / 50) * 50;
+            const prescribedCalories = Math.max(1200, Math.min(1800, rounded50));
+
+            calculatedState = {
+                name: rawName || 'ඔබ',
+                rawNameOnly: rawName,
+                phone,
+                age,
+                gender,
+                height,
+                weight,
+                activity,
+                condition,
+                selectedIds: [...selectedConditionIds],
+                dietPref,
+                price,
+                bmi: bmiFormatted,
+                category,
+                targetLoss: targetLossRange,
+                calorieTarget: prescribedCalories,
+                bmr: Math.round(bmr),
+                tdee: Math.round(tdee)
+            };
+
+            // Update Sticky Top Metrics
+            document.getElementById('metricBmi').textContent = bmiFormatted;
+            document.getElementById('metricTargetLoss').textContent = `${targetLossRange} kg`;
+            document.getElementById('idealWeightSubtext').textContent = `Ideal: ${idealWeight.toFixed(1)} kg`;
+            document.getElementById('metricCalories').textContent = prescribedCalories.toLocaleString();
+            document.getElementById('tdeeSubtext').textContent = `TDEE: ${Math.round(tdee)} kcal (-450)`;
+
+            renderScenarioOutput();
+        }
+
+        // Toggle Collapsible Bank Panel
+        function toggleBankPanel() {
+            const body = document.getElementById('bankDetailsBody');
+            const icon = document.getElementById('bankCollapseIcon');
+            body.classList.toggle('hidden');
+            icon.classList.toggle('rotate-180');
+        }
+
+        function loadBankSettings() {
+            const raw = safeGetStorage(STORAGE_KEY_BANK);
+            if (!raw) return;
+            try {
+                const bank = JSON.parse(raw);
+                if (bank.bankName) document.getElementById('bankName').value = bank.bankName;
+                if (bank.accNo) document.getElementById('bankAccNo').value = bank.accNo;
+                if (bank.accName) document.getElementById('bankAccName').value = bank.accName;
+                if (bank.branch) document.getElementById('bankBranch').value = bank.branch;
+            } catch (err) {}
+        }
+
+        function saveBankAndRefresh() {
+            const bankObj = {
+                bankName: document.getElementById('bankName').value.trim(),
+                accNo: document.getElementById('bankAccNo').value.trim(),
+                accName: document.getElementById('bankAccName').value.trim(),
+                branch: document.getElementById('bankBranch').value.trim()
+            };
+            safeSetStorage(STORAGE_KEY_BANK, JSON.stringify(bankObj));
+            renderScenarioOutput();
+        }
+
+        function selectScenario(num) {
+            activeScenario = num;
+
+            for (let i = 1; i <= 8; i++) {
+                const btn = document.getElementById(`scenBtn${i}`);
+                if (i === num) {
+                    btn.className = 'scenario-btn text-left px-2.5 py-2.5 rounded-xl text-[11px] font-extrabold border-2 border-medinavy bg-medinavy text-white shadow-sm transition flex items-center gap-1.5';
+                } else {
+                    btn.className = 'scenario-btn text-left px-2.5 py-2.5 rounded-xl text-[11px] font-bold border border-slate-200 bg-slate-50 text-slate-700 transition flex items-center gap-1.5';
+                }
+            }
+
+            const btn9 = document.getElementById('scenBtn9');
+            if (num === 9) {
+                btn9.className = 'col-span-2 px-3 py-3 rounded-xl text-xs font-extrabold border-2 border-amber-300 bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 text-white shadow-lg ring-2 ring-amber-400 transition flex items-center justify-center gap-2';
+            } else {
+                btn9.className = 'col-span-2 px-3 py-3 rounded-xl text-xs font-extrabold border-2 border-amber-500 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-white shadow-md transition flex items-center justify-center gap-2';
+            }
+
+            const scenarioTitles = {
+                1: '#1 Prescription Close',
+                2: '#2 Price Gate ("ගාණ කීයද?")',
+                3: '#3 Ghost Intake (3h)',
+                4: '#4 Seen/No Reply (4h)',
+                5: '#5 Slot Closing (24h)',
+                6: '#6 Split Pay 1,500/-',
+                7: '#7 Trust ("අඩු වෙයිද?")',
+                8: '#8 Slip Received',
+                9: '#9 AI Master Prompt'
+            };
+
+            document.getElementById('activeScenarioLabel').textContent = scenarioTitles[num];
+
+            const headerBar = document.getElementById('outputHeaderBar');
+            const headerIcon = document.getElementById('outputHeaderIcon');
+            const headerTitle = document.getElementById('outputHeaderTitle');
+            const bubbleWrapper = document.getElementById('messageBubbleWrapper');
+
+            if (num === 9) {
+                headerBar.className = 'bg-gradient-to-r from-amber-600 to-orange-600 text-white px-3.5 py-2.5 flex items-center justify-between';
+                headerIcon.className = 'fa-solid fa-wand-magic-sparkles text-base text-amber-200';
+                headerTitle.textContent = 'AI Master Prompt (ChatGPT / Claude)';
+                bubbleWrapper.className = 'bg-slate-900 text-amber-50 rounded-2xl p-3 shadow-inner border border-slate-700';
+                document.getElementById('mainOutputTextarea').className = 'w-full bg-transparent border-0 focus:ring-0 outline-none text-xs font-mono text-amber-50 resize-y';
+            } else {
+                headerBar.className = 'bg-medinavy text-white px-3.5 py-2.5 flex items-center justify-between';
+                headerIcon.className = 'fa-brands fa-whatsapp text-base text-emerald-400';
+                headerTitle.textContent = `WhatsApp — ${scenarioTitles[num]}`;
+                bubbleWrapper.className = 'bg-[#dcf8c6] rounded-2xl rounded-tl-none p-3 shadow-sm border border-emerald-300/60';
+                document.getElementById('mainOutputTextarea').className = 'w-full bg-transparent border-0 focus:ring-0 outline-none text-xs sinhala-font text-slate-800 resize-y';
+            }
+
+            renderScenarioOutput();
+        }
+
+        function renderScenarioOutput() {
+            const s = calculatedState;
+            const displayName = s.rawNameOnly ? s.rawNameOnly : '';
+            const nameWithSpace = displayName ? ` ${displayName}` : '';
+            const nameWithComma = displayName ? ` ${displayName}` : '';
+
+            const bank = document.getElementById('bankName').value.trim() || "People's Bank";
+            const accNo = document.getElementById('bankAccNo').value.trim() || "068100110085332";
+            const accName = document.getElementById('bankAccName').value.trim() || "DAWNNEX Medical Team";
+            const branch = document.getElementById('bankBranch').value.trim() || "Monaragala";
+
+            let output = '';
+            let psychTip = '';
+            let voiceScript = '';
+            let voicePriority = 'OPTIONAL VOICE';
+            let voiceBadgeClass = 'text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-slate-600 text-white';
+
+            switch (activeScenario) {
+                case 1:
+                    voicePriority = '🔥 MUST SEND VOICE NOTE AFTER TEXT';
+                    voiceBadgeClass = 'text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-rose-600 text-white animate-pulse';
+                    psychTip = '💡 ඇයි Voice Note එකක් දාන්න ඕනේ? ලංකාවේ කෙනෙක් රු. 2,500ක් Bank Transfer කරන්න කලින් බලන්නේ මේක ඇත්තම Medical Team එකක්ද කියලා. මේ Text එක දාලා තත්පර 20කින් පහත Voice Note එක දැම්මම Sale එක Close වීමේ සම්භාවිතාව 300%කින් වැඩි වෙනවා!';
+                    voiceScript = `"Hi${nameWithSpace}, මම MediDiet Team එකෙන්. ඔයා එවපු විස්තර අනුව මම ඔයාගේ BMI එකයි Calorie ගාණයි උඩින් දාලා තියෙනවා. ඔයාගේ ${s.condition} තියෙන නිසා කෑම නොකා බඩගින්නේ ඉඳලා නම් මේක අඩු කරගන්න බෑ, එහෙම වුණොත් ඇඟ තවත් අමාරුවෙයි. අපි ගෙදර උයන බත්, මාළු, බිත්තර වලින්ම දවසට කැලරි ${s.calorieTarget} ගාණට හරියටම හදපු පිටු 5ක Meal Guide එකක් ඔයාට හදලා දෙනවා. උඩ තියෙන විස්තරේ කියවලා බලලා මට පොඩි Reply එකක් දාන්නකෝ."`;
+
+                    output = `බොහොම ස්තූතියි${nameWithSpace}! මම ඔයා එවපු විස්තර ටික හරියටම Check කළා. 🩺📋
+
+📊 *ඔයාගේ මූලික වෛද්‍ය තක්සේරුව (Clinical Assessment):*
+
+• *BMI අගය:* ${s.bmi} kg/m² (Asian Medical Standard එකට අනුව ඔයා දැනට ඉන්නේ *${s.category}* කියන මට්ටමේ).
+• *අඩු කරගන්න ඕන මුළු බර:* ඔයාගේ උසට ගැලපෙන නිරෝගී බරට එන්න නම් ආරක්ෂිතව කිලෝ *${s.targetLoss} kg* වගේ ප්‍රමාණයක් අඩු කරගන්න ඕනේ.
+• *Daily Calorie Target:* දවසකට ඔයාගේ ඇඟට ලැබෙන කැලරි ගාණ *${s.calorieTarget} kcal* සීමාවේ තියාගන්න ඕනේ.
+
+🩺 *විශේෂ අවධානය (Medical Fact):*
+ඔයාගේ *${s.condition}* හරියටම Control කරගන්න නම් කෑම නොකා බඩගින්නේ ඉඳලා හරියන්නේ නෑ (එහෙම කළොත් Metabolism තවත් Slow වෙලා බඩ වැඩි වෙනවා). මේකට කරන්න ඕනේ ඇඟේ Insulin Spike වෙන එක පාලනය කරන *Low-GI Calorie Deficit* ආහාර රටාවකට යන එකයි.
+
+🥗 *අපේ විසඳුම:*
+බඩගින්නේ ඉන්නේ නැතුව, අපි ගෙදර උයන සාමාන්‍ය කෑම (බත්, මාළු, බිත්තර, පරිප්පු, එළවළු) අර *${s.calorieTarget} kcal* ගාණට හරියටම Balance කරලා, පළවෙනි මාසේ ඇතුළත *කිලෝ 4ත් 6ත් අතර ප්‍රමාණයක්* අඩු කරගන්න පුළුවන් පිටු 5ක *30-Day Custom Medical Meal Guide (PDF පොතක්)* අපි ඔයාට හදලා දෙනවා. (කෑම ගන්න ඕන ප්‍රමාණ කෝප්ප සහ මේස හැඳි වලින්ම තියෙන නිසා හරිම ලේසියි).
+
+🛡️ *14-Day Free Guarantee:* දවස් 14කට පස්සේ අපි ආයෙමත් ඔයාගේ බරයි ඉණේ ප්‍රමාණයයි බලලා, අවශ්‍ය නම් කිසිම අමතර ගාස්තුවක් නැතුව Plan එක වෙනස් කරලා දෙනවා (Free Clinical Re-adjustment).
+
+💳 *සම්පූර්ණ ගාස්තුව:* Private Hospital එකක Nutrition Clinic එකකට යන රු. 6,000+ වියදම වෙනුවට, අපේ සම්පූර්ණ පැකේජ් එකටම යන්නේ *රු. ${s.price}/- ක් විතරයි.* (වෙන කිසිම මාසික ගාස්තුවක් නෑ).
+
+ඔයාගේ Plan එක අදම හදාගන්න පහළ Account එකට Payment එක දාලා Slip එකේ හරි Screenshot එකේ හරි Photo එකක් මෙතනට එවන්න. විනාඩි 45ක් - පැයක් ඇතුළත ඔයාගේ PDF පොත WhatsApp එකටම එවනවා: 👇
+
+🏦 *Bank:* ${bank}
+• *Account No:* ${accNo}
+• *Name:* ${accName}
+• *Branch:* ${branch}
+
+💬 *මට පොඩ්ඩක් කියන්න:* අපි දවසකට හදන්නේ සීමිත Plans ගාණක් නිසා, ඔයාගේ Slot එක අද ලැයිස්තුවට වෙන් කරගන්න ඔයා දැන් *Online Transfer* එකක් දානවද, නැත්නම් හෙට *Bank Deposit* එකක් කරනවද?`;
+                    break;
+
+                case 2:
+                    voicePriority = 'TEXT ONLY IS FINE';
+                    psychTip = '💡 ලංකාවේ ගොඩක් අය Ad එක දැක්ක ගමන් අහන්නේ "Price කීයද?" කියලා. එතනදී රු. 2,500 විතරක් කිව්වොත් එයාලා ඒකේ වටිනාකම දන්නේ නැතුව යනවා. මේ මැසේජ් එකෙන් Price එකත් කියන ගමන්ම එයාලගේ උසයි බරයි ගන්නවා.';
+                    voiceScript = `"Hi! අපේ Custom Medical Meal Plans රුපියල් 2,500 ඉඳන් තියෙනවා. හැබැයි ඔයාට හරියනම Plan එක බලන්න ඔයාගේ වයසයි, උසයි, බරයි පොඩ්ඩක් මට මැසේජ් කරන්නකෝ, මම BMI එක බලලා විස්තරේ එවන්නම්!"`;
+
+                    output = `ආයුබෝවන්! 🩺 
+
+සාමාන්‍යයෙන් බර අඩු කරගන්න හදන Plan එකයි, PCOS / Fatty Liver / Cholesterol වගේ තත්ත්වයන් එක්ක බඩ අඩු කරගන්න හදන Medical Meal Plan එකයි එකිනෙකට වෙනස් වෙනවා (අපේ සම්පූර්ණ පැකේජ් ගාස්තු *රු. 2,500/-* සිට ආරම්භ වෙනවා - එක වරක් පමණයි ගෙවන්න තියෙන්නේ).
+
+හැබැයි ඔයාගේ ඇඟට හරියටම ගැලපෙන Plan එකයි, ඔයා කිලෝ කීයක් අඩු කරගන්න ඕනෙද කියන එකයි හරියටම බලාගන්න, ඔයාගේ *වයස, උස, දැනට බර සහ ප්‍රධානම Target එක* විතරක් මට Reply කරන්නකෝ. මම Check කරලා විස්තරේ දාන්නම්! 👇`;
+                    break;
+
+                case 3:
+                    voicePriority = 'TEXT ONLY (LOW FRICTION)';
+                    psychTip = '💡 ප්‍රශ්න 5ම ටයිප් කරන්න කම්මැලි හිතුණ අයට "උසයි බරයි විතරක් එවන්න" කිව්වම තත්පර 5න් Reply කරනවා.';
+                    voiceScript = `"Hi! ඔයා Busy නිසා විස්තර ඔක්කොම ටයිප් කරන්න අමාරු නම්, ඔයාගේ උසයි දැනට බරයි විතරක් දාන්නකෝ. මම BMI එක Check කරලා විස්තරේ එවන්නම්."`;
+
+                    output = `ආයුබෝවන්! 🩺 ඔයා කාර්යබහුල නිසා විස්තර ඔක්කොම ටයිප් කරන්න වෙලාව මදි නම්, ඔයාගේ *උස* සහ *දැනට බර* විතරක් දැනට මෙතනට දාන්නකෝ. අපේ Medical Team එක ඔයාගේ BMI Checkup එක කරලා විස්තරේ එවන්නම්! 👇`;
+                    break;
+
+                case 4:
+                    voicePriority = '🔥 SEND THIS AS A VOICE NOTE!';
+                    voiceBadgeClass = 'text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-rose-600 text-white animate-pulse';
+                    psychTip = '💡 Main Quote එක දාලා පැය 3-4ක් ගිහින් "Seen" කරලා සද්ද නැතුව ඉන්නේ ගොඩක් වෙලාවට "මේකේ තියෙන කෑම හදන්න අමාරු වෙයිද දන්නේ නෑ" කියන බයට. මේ වෙලාවට Text එකට වඩා තත්පර 20ක Voice Note එකක් දැම්මම 80%ක් අය Reply කරනවා!';
+                    voiceScript = `"Hi${nameWithSpace}, මම MediDiet එකෙන්. ඔයාට අපේ පිටු 5ක Meal Guide එක ගැන හරි කෑම ගැන හරි මොනවා හරි ප්‍රශ්නයක් තියෙනවද කියලා බලන්නයි කතා කළේ. බය වෙන්න එපා, මේකේ පිටරට ගණන් වැඩි කෑම මුකුත්ම නෑ, අපි ගෙදර උයන බත්, පරිප්පු, මාළු, බිත්තර කෝප්ප සහ හැඳි ගාණට කන විදිහ තමයි තියෙන්නේ. ඔයාට මොනවා හරි දැනගන්න තියෙනවා නම් මගෙන් අහන්නකෝ!"`;
+
+                    output = `Hi${nameWithSpace}! 🩺 ඔයාට ලැබෙන පිටු 5ක *Medical Meal Guide* එක ගැන හරි, Payment එක කරන විදිහ ගැන හරි මොනවා හරි පොඩි හරි ගැටලුවක් තියෙනවද? 🤔
+
+ගොඩක් අය අහන දෙයක් තමයි මේකේ හොයාගන්න අමාරු, වියදම් වැඩි පිටරට කෑම තියෙනවද කියලා. කොහෙත්ම නෑ! 100%ක්ම අපි ගෙදර උයන බත්, මාළු, බිත්තර, එළවළු කෝප්ප සහ මේස හැඳි ගාණට හරියටම ගන්න විදිහ තමයි මේකේ තියෙන්නේ. 
+
+ඔයාට දැනගන්න ඕන ඕනෑම දෙයක් තියෙනවා නම් මෙතනින් අහන්නකෝ! 👇`;
+                    break;
+
+                case 5:
+                    voicePriority = 'TEXT OR SHORT VOICE';
+                    psychTip = '💡 පැය 24ක් ගියාට පස්සේ Customer පස්සෙන් පන්නනවා වගේ පේන්න හොඳ නෑ. Doctor කෙනෙක්ගේ තියෙන Busy බව සහ "Slot Closing" Scarcity එක පාවිච්චි කරන්න.';
+                    voiceScript = `"Hi${nameWithSpace}, අපි දවසකට හදන්නේ සීමිත Meal Plans ගාණක් නිසා අද List එක දැන් Close කරන්න යන්නේ. ඔයාගේ BMI එකයි ${s.calorieTarget} Calorie ගාණයි අපි ගණනය කරලා තියෙන නිසා, ඔයා වෙනුවෙන් හෙට වෙනකන් Slot එක තියන්නද නැත්නම් File එක Close කරන්නද කියලා මට පොඩි මැසේජ් එකක් දාන්නකෝ."`;
+
+                    output = `Hi${nameWithSpace}! 🩺 අපේ Medical Team එක දවසකට හදන්නේ සීමිත ආහාර සැලසුම් (Daily Slots) ප්‍රමාණයක් විතරයි. 
+
+ඔයාගේ දත්ත (*BMI: ${s.bmi} | Daily Target: ${s.calorieTarget} kcal*) අපි දැනටමත් ගණනය කරලා තාවකාලිකව File එකක දාලා තියෙන්නේ. අද දවසේ ලැයිස්තුව දැන් ඉවර වෙන නිසා, *ඔයාගේ File එක දැනට Close කරන්නද, නැත්නම් හෙට Deposit කරන්න ඔයා වෙනුවෙන් Slot එක Hold කරලා තියන්නද?* පොඩි Reply එකකින් කියන්නකෝ.`;
+                    break;
+
+                case 6:
+                    voicePriority = '🎙️ GREAT FOR VOICE NOTE';
+                    psychTip = '💡 ලංකාවේ ආර්ථිකය එක්ක සමහර අයට එකපාර රු. 2,500ක් දාන්න අමාරු වෙන්න පුළුවන්, නැත්නම් Online ගෙවන්න පොඩි බයක් තියෙනවා. රු. 1,500ක් දාලා පටන් ගමු කිව්වම ඒ බය නැති වෙනවා.';
+                    voiceScript = `"Hi${nameWithSpace}, මට ඔයාව හොඳටම තේරෙනවා. හැබැයි Private Hospital එකකට ගියොත් මේ වැඩේට රුපියල් හයදාහකට වඩා යනවා. ඔයාට එකපාර රුපියල් ${s.price}ක් දාන්න අමාරු නම්, අද රුපියල් 1,500ක් විතරක් දාලා ඔයාගේ PDF Plan එක අරගෙන වැඩේ පටන් ගන්න. ඉතුරු ගාණ දවස් 14න් අපි බර බලද්දී දැම්මම ඇති. එහෙම ලේසියි නේද?"`;
+
+                    output = `මට ඔයා කියන දේ හොඳටම තේරෙනවා${nameWithComma}. 🩺 හැබැයි අපි Private Hospital එකක Doctor කෙනෙක් හම්බවෙලා Diet Plan එකක් ගන්න ගියොත් Channelling වලටයි ඔක්කොටම රු. 6,000කට වඩා වියදම් වෙනවා. අනික මේ රු. ${s.price}/- ඔයා ගෙවන්නේ එකම එක පාරයි.
+
+ඔයාට මේ වෙලාවේ එකපාරම මුළු මුදලම දාන්න අපහසු නම්, *අද රු. 1,500/- ක් විතරක් Deposit කරලා* ඔයාගේ සම්පූර්ණ Meal Plan එක අරන් අදම වැඩේ පටන් ගන්න. ඉතුරු පොඩි ගාණ දවස් 14කින් අපි ඔයාගේ ප්‍රගතිය බලන දවසට දාන්න පුළුවන්. ඒ විදිහ ඔයාට පහසුයි නේද? 🤝`;
+                    break;
+
+                case 7:
+                    voicePriority = '🔥 MUST SEND VOICE NOTE!';
+                    voiceBadgeClass = 'text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-rose-600 text-white animate-pulse';
+                    psychTip = '💡 "බර අඩු වෙයිද?" කියලා අහන්නේ කලින් Green Tea, Slimming Tea, පෙති බීලා හෝ බඩගින්නේ ඉඳලා රැවටුණ අයයි. මෙතනදී Doctor කෙනෙක් වගේ කරුණාවන්තව Voice Note එකක් දැම්මම 100%ක්ම Trust එක හැදෙනවා!';
+                    voiceScript = `"ඔයාට එහෙම සැකයක් හිතෙන එක හරිම සාධාරණයි${nameWithSpace}, මොකද ගොඩක් අය එක එක Tea වර්ග බීලා, කෑම නොකා ඉඳලා අමාරුවේ වැටෙනවා. හැබැයි මේක එහෙම එකක් නෙවෙයි. අපි ඔයාගේ BMI එක ${s.bmi} සහ ${s.condition} බලලා, දවසට හරියටම කැලරි ${s.calorieTarget}ක් ලැබෙන විදිහට විද්‍යාත්මකව හදන Medical Plan එකක්. අනික දවස් 14කින් අපි ආයේ ඔයාගේ බරයි ඉණයි බලලා වෙනසක් මදි නම් නොමිලේම Plan එක වෙනස් කරලා දෙනවා. ඉතින් බය නැතුව අපි අදම පටන් ගමු!"`;
+
+                    output = `ඔයාට එහෙම සැකයක් හිතෙන එක හරිම සාධාරණයි${nameWithComma}. 🩺 මොකද ගොඩක් අය එක එක Slimming Tea බීලා හරි කෑම නොකා ඉඳලා හරි බර අඩු කරගන්න ගිහින් හෙම්බත් වෙලා ඉන්නේ.
+
+හැබැයි අපේ Medical Plan එකෙන් ප්‍රතිඵල ලැබෙන්න ප්‍රධානම හේතු 2ක් තියෙනවා:
+1️⃣ මේක හැමෝටම දෙන පොදු කොළයක් නෙවෙයි. ඔයාගේ *BMI එක (${s.bmi})* සහ *${s.condition}* තත්ත්වයට ගැලපෙන්න දවසට *${s.calorieTarget} kcal* ලැබෙන විදිහට හරියටම ගණනය කරලා හදන Plan එකක්.
+2️⃣ *14-Day Free Adjustment Guarantee:* දවස් 14කින් අපි ආයෙමත් ඔයාගේ ඉණේ ප්‍රමාණයයි බරයි Check කරලා, බර අඩුවෙන වේගය මදි නම් සතයක්වත් ගන්නේ නැතුව ඔයාගේ කැලරි ගාණ වෙනස් කරලා අලුත් Plan එකක් හදලා දෙනවා! 
+
+ඉතින් බය නැතුව අපි අදම පටන් ගමුද? 🥗✨`;
+                    break;
+
+                case 8:
+                    voicePriority = 'WARM VOICE OR TEXT';
+                    psychTip = '💡 සල්ලි දැම්ම ගමන් Customer ට පොඩි බයක් එනවා "සල්ලි ගත්තට පස්සේ සද්ද නැතුව ඉඳීද?" කියලා. තත්පර 10න් මේ මැසේජ් එක දැම්මම එයාලට ලොකු සතුටක් සහ විශ්වාසයක් ඇති වෙනවා.';
+                    voiceScript = `"බොහොම ස්තූතියි${nameWithSpace}! ඔයාගේ Payment Slip එක අපිට ලැබුණා. මම දැන්ම ඔයාගේ File එක අපේ Medical Team එකට දැම්මා. විනාඩි 30ත් 45ත් ඇතුළත ඔයාගේ පිටු 5ක Custom Meal Guide PDF එක මේ WhatsApp එකටම එවනවා!"`;
+
+                    output = `බොහොම ස්තූතියි${nameWithSpace}! ඔයාගේ Payment Slip එක අපිට ලැබුණා. ✅🩺 
+
+අපේ Medical Team එක දැන් ඔයාගේ දත්ත (*BMI: ${s.bmi} | Daily Target: ${s.calorieTarget} kcal*) සහ *${s.condition}* තත්ත්වයට ගැලපෙන විදිහට ඔයාගේ පිටු 5ක Personal Meal Guide (PDF පොත) හදන ගමන් ඉන්නේ. 
+
+තව *විනාඩි 30 - 45ක් ඇතුළත* ඔයාගේ සම්පූර්ණ සැලැස්ම මේ WhatsApp අංකයටම ලැබෙයි! 🥗🇱🇰`;
+                    break;
+
+                case 9:
+                    voicePriority = 'INTERNAL AI PROMPT';
+                    psychTip = '💡 මේ Prompt එක Copy කරලා ChatGPT හෝ Claude එකට දාන්න. ඒකෙන් ලංකාවේ මිනිස්සුන්ට තේරෙන ස්වභාවික වෛද්‍ය සිංහලෙන් පිටු 5ක සම්පූර්ණ PDF පොතම හදලා දෙනවා.';
+                    voiceScript = `මෙය ඔබ විසින් ChatGPT / Claude වෙත ලබා දෙන AI Prompt එකකි (Customer ට යවන පණිවිඩයක් නොවේ).`;
+
+                    output = `Act as a Senior Sri Lankan Clinical Nutritionist and Medical Doctor at "MediDiet Sri Lanka". Generate a complete, highly structured, 5-Page Custom Medical Meal Guide ready to be exported as a PDF for the following patient.
+
+CRITICAL LANGUAGE & TONE RULE:
+Write in warm, natural, high-trust Spoken Clinical Sinhala mixed naturally with standard English medical/nutrition terms (e.g., BMI, Calorie Deficit, Low-GI, Insulin Resistance, Metabolism, Protein, Portion) exactly how a top private-hospital doctor in Colombo explains a diet plan to a patient. Avoid robotic or overly archaic literary Sinhala ("පසුවේ", "ලැබෙනු ඇත").
+
+=========================================
+PATIENT CLINICAL PROFILE:
+- Patient Name: ${displayName || 'Valued Patient'}
+- Age & Gender: ${s.age} Years / ${s.gender}
+- Height & Current Weight: ${s.height} cm / ${s.weight} kg
+- Calculated Asian BMI: ${s.bmi} kg/m² (${s.category})
+- Safe Target Weight Loss: ${s.targetLoss} kg (4-6 kg expected in Month 1)
+- Prescribed Daily Calorie Target: ${s.calorieTarget} kcal/day (Low-GI Calorie Deficit, BMR: ${s.bmr} kcal, TDEE: ${s.tdee} kcal)
+- Combined Clinical Conditions / Focus Areas: ${s.condition}
+- Dietary Preference: ${s.dietPref}
+=========================================
+
+STRICT CLINICAL & SRI LANKAN CULTURAL INSTRUCTIONS:
+1. ONLY use affordable, everyday Sri Lankan household foods (e.g., Red Rice / Sudu Kakulu / Basmati / Kurakkan, Parippu, Thalapath/Hurulla/Kumbalawa/Salaya fish, Boiled/Omelette Eggs, Chicken breast, Soya/Mushrooms for veg, Gotukola, Mukunuwenna, Kankun, Mallung, Pol Sambol in controlled portions, Kola Kanda, Mung Ata, Kadala, Kawpi, Plain Curd/Set Yoghurt, Papaya, Guava, Belimal, Green Tea, Plain Tea without sugar). Do NOT include expensive imported foods like salmon, quinoa, avocado, or blueberries.
+2. Every single meal item MUST specify BOTH Sri Lankan household measurements (e.g., පිසූ බත් කෝප්ප 3/4, මේස හැඳි 2) AND exact gram/ml weights (e.g., 120g) alongside estimated calories per meal so daily total equals ~${s.calorieTarget} kcal.
+3. Address ALL selected clinical conditions (${s.condition}) synergistically in the meal plan.
+4. Structure the output into 5 distinct PDF Pages:
+   - PAGE 1: Clinical Assessment Summary (${s.bmi} BMI, ${s.calorieTarget} kcal breakdown, Macronutrient split, and a clear, encouraging medical explanation of how this Low-GI plan reverses/manages "${s.condition}" without starving).
+   - PAGE 2: Breakfast & 10:30 AM Mid-Morning Options (4 rotating Sri Lankan Low-GI options totaling ~350-400 kcal, with exact cup/tbsp & gram portions).
+   - PAGE 3: Sri Lankan Rice & Curry Plate Method for Lunch (4 rotating options totaling ~450-500 kcal, showing exact rice-to-vegetable-to-protein ratios on a regular plate).
+   - PAGE 4: 4:00 PM Evening Tea & Light Low-Carb Dinner Options before 8:00 PM (4 rotating options totaling ~300-350 kcal, avoiding late-night insulin spikes).
+   - PAGE 5: Specific Medical Golden Rules for "${s.condition}", Daily Water Schedule (2.5L+), Foods to Strictly Avoid, Sri Lankan Wedding/Party/Kottu Survival Trick, and the 14-Day Clinical Progress Tracker Table (Date, Morning Weight, Waist in inches).`;
+                    break;
+            }
+
+            const textarea = document.getElementById('mainOutputTextarea');
+            textarea.value = output;
+            updateCharCount();
+
+            // Update Voice Strategy & Teleprompter Card
+            document.getElementById('psychTipText').textContent = psychTip;
+            document.getElementById('voiceTeleprompterText').textContent = voiceScript;
+            const pBadge = document.getElementById('voicePriorityBadge');
+            pBadge.textContent = voicePriority;
+            pBadge.className = voiceBadgeClass;
+        }
+
+        function copyVoiceScript() {
+            const text = document.getElementById('voiceTeleprompterText').textContent;
+            const temp = document.createElement('textarea');
+            temp.value = text;
+            document.body.appendChild(temp);
+            temp.select();
+            document.execCommand('copy');
+            document.body.removeChild(temp);
+            showToast('Voice Note Script Copied!');
+        }
+
+        function updateCharCount() {
+            const val = document.getElementById('mainOutputTextarea').value;
+            document.getElementById('charCounter').textContent = `${val.length} chars`;
+        }
+
+        // Copy & WhatsApp Actions
+        function copyMainOutput() {
+            const textarea = document.getElementById('mainOutputTextarea');
+            textarea.select();
+            textarea.setSelectionRange(0, 99999);
+            try {
+                document.execCommand('copy');
+                showToast(activeScenario === 9 ? 'AI Master Prompt Copied!' : 'WhatsApp Script Copied!');
+            } catch (e) {
+                showToast('Copy failed');
+            }
+            window.getSelection().removeAllRanges();
+        }
+
+        function copyInitialWelcome() {
+            const hiddenEl = document.getElementById('hiddenIntakeGreeting');
+            hiddenEl.classList.remove('hidden');
+            hiddenEl.select();
+            hiddenEl.setSelectionRange(0, 99999);
+            try {
+                document.execCommand('copy');
+                showToast('Intake Greeting Copied!');
+            } catch (e) {
+                showToast('Copy failed');
+            }
+            hiddenEl.classList.add('hidden');
+            window.getSelection().removeAllRanges();
+        }
+
+        function sendToWhatsApp() {
+            const text = document.getElementById('mainOutputTextarea').value;
+            let phone = document.getElementById('waPhoneInput').value.replace(/\D/g, '');
+            if (phone.startsWith('0') && phone.length === 10) {
+                phone = '94' + phone.substring(1);
+            }
+            const url = phone
+                ? `https://wa.me/${phone}?text=${encodeURIComponent(text)}`
+                : `https://wa.me/?text=${encodeURIComponent(text)}`;
+            window.open(url, '_blank');
+        }
+
+        function resetPatientForm() {
+            document.getElementById('clientName').value = '';
+            document.getElementById('waPhoneInput').value = '';
+            document.getElementById('clientAge').value = 30;
+            setGender('Female');
+            document.getElementById('clientHeight').value = 160;
+            document.getElementById('clientWeight').value = 74;
+            document.getElementById('activityLevel').value = '1.2';
+            document.getElementById('customConditionInput').value = '';
+            selectedConditionIds = ['belly'];
+            renderConditionChips();
+            document.getElementById('dietPreference').selectedIndex = 0;
+            document.getElementById('packagePrice').value = '2,500';
+            document.getElementById('clientStatusSelect').value = 'Pending';
+            selectScenario(1);
+            recalculateAll();
+            switchMobileTab('input');
+            showToast('Ready for New Patient!');
+        }
+
+        async function initSqliteDatabase() {
+            try {
+                if (typeof initSqlJs === 'function') {
+                    SQL_ENGINE = await initSqlJs({
+                        locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`
+                    });
+
+                    const savedB64 = safeGetStorage(STORAGE_KEY_SQLITE_B64);
+                    if (savedB64) {
+                        const binaryStr = window.atob(savedB64);
+                        const bytes = new Uint8Array(binaryStr.length);
+                        for (let i = 0; i < binaryStr.length; i++) {
+                            bytes[i] = binaryStr.charCodeAt(i);
+                        }
+                        sqliteDb = new SQL_ENGINE.Database(bytes);
+                    } else {
+                        sqliteDb = new SQL_ENGINE.Database();
+                        sqliteDb.run(`
+                            CREATE TABLE IF NOT EXISTS patients (
+                                id TEXT PRIMARY KEY,
+                                name TEXT,
+                                phone TEXT,
+                                age INTEGER,
+                                gender TEXT,
+                                height REAL,
+                                weight REAL,
+                                activity TEXT,
+                                condition TEXT,
+                                selectedIds TEXT,
+                                dietPref TEXT,
+                                price TEXT,
+                                bmi TEXT,
+                                calorieTarget INTEGER,
+                                status TEXT,
+                                savedAt TEXT
+                            );
+                        `);
+                        syncJsonArrayToSqlite();
+                    }
+                    document.getElementById('dbStatusBadge').textContent = 'SQLite + JSON Active';
+                }
+            } catch (err) {
+                document.getElementById('dbStatusBadge').textContent = 'JSON DB Active';
+            }
+        }
+
+        function persistSqliteToStorage() {
+            if (!sqliteDb) return;
+            try {
+                const data = sqliteDb.export();
+                let binary = '';
+                for (let i = 0; i < data.byteLength; i++) {
+                    binary += String.fromCharCode(data[i]);
+                }
+                safeSetStorage(STORAGE_KEY_SQLITE_B64, window.btoa(binary));
+            } catch (e) {}
+        }
+
+        function syncJsonArrayToSqlite() {
+            if (!sqliteDb) return;
+            try {
+                sqliteDb.run('DELETE FROM patients;');
+                const stmt = sqliteDb.prepare(`
+                    INSERT INTO patients VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                `);
+                crmClients.forEach(c => {
+                    stmt.run([
+                        c.id, c.name, c.phone || '', c.age, c.gender, c.height, c.weight,
+                        String(c.activity), c.condition, JSON.stringify(c.selectedIds || ['belly']),
+                        c.dietPref, c.price, c.bmi, c.calorieTarget, c.status, c.savedAt || ''
+                    ]);
+                });
+                stmt.free();
+                persistSqliteToStorage();
+            } catch (e) {}
+        }
+
+        function loadCrmClients() {
+            const raw = safeGetStorage(STORAGE_KEY_CRM_JSON);
+            if (raw) {
+                try {
+                    crmClients = JSON.parse(raw);
+                } catch (e) {
+                    crmClients = [];
+                }
+            } else {
+                crmClients = [
+                    {
+                        id: 'sample-1',
+                        name: 'Nimali Perera',
+                        phone: '0771234567',
+                        age: 32,
+                        gender: 'Female',
+                        height: 158,
+                        weight: 73,
+                        activity: '1.2',
+                        condition: 'උදරය වටා මේදය (Belly Fat) සහ වැඩි බර සහ PCOS / PCOD සහ ඉන්සියුලින් ප්‍රතිරෝධය (Insulin Resistance)',
+                        selectedIds: ['belly', 'pcos'],
+                        dietPref: 'Non-Vegetarian (මස්, මාළු, බිත්තර ගනී)',
+                        price: '2,500',
+                        bmi: '29.2',
+                        calorieTarget: 1250,
+                        status: 'Pending',
+                        savedAt: 'Today'
+                    }
+                ];
+            }
+            renderCrmCards();
+        }
+
+        function saveClientToDatabase() {
+            const s = calculatedState;
+            const status = document.getElementById('clientStatusSelect').value;
+            const clientName = s.rawNameOnly || 'Unnamed Patient';
+
+            const newEntry = {
+                id: 'cli-' + Date.now(),
+                name: clientName,
+                phone: s.phone || '',
+                age: s.age,
+                gender: s.gender,
+                height: s.height,
+                weight: s.weight,
+                activity: String(s.activity),
+                condition: s.condition,
+                selectedIds: [...selectedConditionIds],
+                dietPref: s.dietPref,
+                price: s.price,
+                bmi: s.bmi,
+                calorieTarget: s.calorieTarget,
+                status: status,
+                savedAt: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) + ' ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            };
+
+            const existingIndex = crmClients.findIndex(c => c.name.toLowerCase() === clientName.toLowerCase());
+            if (existingIndex > -1) {
+                crmClients[existingIndex] = newEntry;
+            } else {
+                crmClients.unshift(newEntry);
+            }
+
+            safeSetStorage(STORAGE_KEY_CRM_JSON, JSON.stringify(crmClients));
+            syncJsonArrayToSqlite();
+            renderCrmCards();
+            pushClientToGoogleSheet(newEntry);
+            showToast(`Saved "${clientName}" to DB!`);
+        }
+
+        // Google Sheets Cloud Sync Helpers
+        function loadWebhookUrl() {
+            const url = safeGetStorage(STORAGE_KEY_GSHEET_URL);
+            if (url) {
+                document.getElementById('googleSheetWebhookInput').value = url;
+                updateCloudStatusUI(true);
+            } else {
+                updateCloudStatusUI(false);
+            }
+        }
+
+        function saveWebhookUrl() {
+            const url = document.getElementById('googleSheetWebhookInput').value.trim();
+            safeSetStorage(STORAGE_KEY_GSHEET_URL, url);
+            updateCloudStatusUI(Boolean(url));
+        }
+
+        function updateCloudStatusUI(isLinked) {
+            const pill = document.getElementById('cloudConnPill');
+            const headerBadge = document.getElementById('dbStatusBadge');
+            if (isLinked) {
+                pill.textContent = '☁️ Cloud Active';
+                pill.className = 'text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-medigreen';
+                headerBadge.textContent = '☁️ Cloud + SQLite';
+            } else {
+                pill.textContent = 'Local Only';
+                pill.className = 'text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800';
+            }
+        }
+
+        function toggleCloudSetupModal() {
+            const box = document.getElementById('cloudSetupBox');
+            box.classList.toggle('hidden');
+        }
+
+        function copyGoogleAppsScriptCode() {
+            const el = document.getElementById('hiddenAppsScriptCode');
+            el.classList.remove('hidden');
+            el.select();
+            el.setSelectionRange(0, 99999);
+            try {
+                document.execCommand('copy');
+                showToast('Google Apps Script Copied!');
+            } catch (e) {
+                showToast('Copy failed');
+            }
+            el.classList.add('hidden');
+            window.getSelection().removeAllRanges();
+        }
+
+        async function pushClientToGoogleSheet(clientObj) {
+            const webhookUrl = safeGetStorage(STORAGE_KEY_GSHEET_URL);
+            if (!webhookUrl) return;
+            try {
+                await fetch(webhookUrl, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({ action: 'upsert', client: clientObj })
+                });
+            } catch (e) {}
+        }
+
+        async function fetchAllFromGoogleSheet() {
+            const webhookUrl = safeGetStorage(STORAGE_KEY_GSHEET_URL);
+            if (!webhookUrl) {
+                toggleCloudSetupModal();
+                showToast('Paste your Google Sheet URL first!');
+                return;
+            }
+            const spinner = document.getElementById('cloudSyncSpinner');
+            spinner.classList.add('fa-spin');
+            try {
+                const res = await fetch(webhookUrl);
+                const data = await res.json();
+                if (data && Array.isArray(data.clients)) {
+                    crmClients = data.clients;
+                    safeSetStorage(STORAGE_KEY_CRM_JSON, JSON.stringify(crmClients));
+                    syncJsonArrayToSqlite();
+                    renderCrmCards();
+                    showToast(`Synced ${crmClients.length} clients from Google Cloud!`);
+                }
+            } catch (err) {
+                showToast('Cloud Sync Error — Check URL permissions');
+            } finally {
+                spinner.classList.remove('fa-spin');
+            }
+        }
+
+        function reloadClientFromCrm(id, goToScript = false) {
+            const c = crmClients.find(item => item.id === id);
+            if (!c) return;
+
+            document.getElementById('clientName').value = c.name;
+            document.getElementById('waPhoneInput').value = c.phone || '';
+            document.getElementById('clientAge').value = c.age;
+            setGender(c.gender || 'Female');
+            document.getElementById('clientHeight').value = c.height;
+            document.getElementById('clientWeight').value = c.weight;
+            document.getElementById('activityLevel').value = c.activity;
+            document.getElementById('dietPreference').value = c.dietPref;
+            document.getElementById('packagePrice').value = c.price;
+            document.getElementById('clientStatusSelect').value = c.status;
+
+            if (Array.isArray(c.selectedIds) && c.selectedIds.length > 0) {
+                selectedConditionIds = [...c.selectedIds];
+            } else {
+                selectedConditionIds = ['belly'];
+            }
+            renderConditionChips();
+            recalculateAll();
+
+            if (goToScript) {
+                switchMobileTab('scripts');
+            } else {
+                switchMobileTab('input');
+            }
+            showToast(`Loaded ${c.name}!`);
+        }
+
+        function toggleClientPaidStatus(id) {
+            const c = crmClients.find(item => item.id === id);
+            if (!c) return;
+            c.status = c.status === 'Paid' ? 'Pending' : 'Paid';
+            safeSetStorage(STORAGE_KEY_CRM_JSON, JSON.stringify(crmClients));
+            syncJsonArrayToSqlite();
+            renderCrmCards();
+            pushClientToGoogleSheet(c);
+
+            if (c.status === 'Paid') {
+                reloadClientFromCrm(id, true);
+                selectScenario(8);
+                showToast(`${c.name} marked PAID! Confirmation ready.`);
+            }
+        }
+
+        function deleteCrmClient(id) {
+            crmClients = crmClients.filter(item => item.id !== id);
+            safeSetStorage(STORAGE_KEY_CRM_JSON, JSON.stringify(crmClients));
+            syncJsonArrayToSqlite();
+            renderCrmCards();
+            showToast('Patient record deleted');
+        }
+
+        function clearAllCrmClients() {
+            crmClients = [];
+            safeSetStorage(STORAGE_KEY_CRM_JSON, JSON.stringify(crmClients));
+            syncJsonArrayToSqlite();
+            renderCrmCards();
+            showToast('Database cleared');
+        }
+
+        // Export Portable JSON Database File (For GitHub Pages Backup/Commit)
+        function exportJsonDatabase() {
+            const payload = {
+                brand: 'MediDiet Sri Lanka',
+                exportedAt: new Date().toISOString(),
+                totalClients: crmClients.length,
+                clients: crmClients
+            };
+            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `medidiet_patients_${new Date().toISOString().slice(0,10)}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast('Downloaded .JSON Database!');
+        }
+
+        // Export Real SQLite (.sqlite) Database File
+        function exportSqliteDatabase() {
+            if (!sqliteDb) {
+                showToast('SQLite initializing, exporting JSON instead...');
+                exportJsonDatabase();
+                return;
+            }
+            syncJsonArrayToSqlite();
+            const binaryArray = sqliteDb.export();
+            const blob = new Blob([binaryArray], { type: 'application/x-sqlite3' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `medidiet_patients_${new Date().toISOString().slice(0,10)}.sqlite`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast('Downloaded .SQLite Database!');
+        }
+
+        // Import either .JSON or .SQLite Database File
+        function importDatabaseFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            if (file.name.endsWith('.json')) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const parsed = JSON.parse(e.target.result);
+                        const list = Array.isArray(parsed) ? parsed : (parsed.clients || []);
+                        crmClients = list;
+                        safeSetStorage(STORAGE_KEY_CRM_JSON, JSON.stringify(crmClients));
+                        syncJsonArrayToSqlite();
+                        renderCrmCards();
+                        showToast(`Imported ${crmClients.length} clients from JSON!`);
+                    } catch (err) {
+                        showToast('Invalid JSON file');
+                    }
+                };
+                reader.readAsText(file);
+            } else if (file.name.endsWith('.sqlite') || file.name.endsWith('.db')) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const uints = new Uint8Array(e.target.result);
+                        sqliteDb = new SQL_ENGINE.Database(uints);
+                        const res = sqliteDb.exec("SELECT * FROM patients");
+                        if (res.length > 0) {
+                            const rows = res[0].values;
+                            crmClients = rows.map(r => ({
+                                id: r[0],
+                                name: r[1],
+                                phone: r[2],
+                                age: r[3],
+                                gender: r[4],
+                                height: r[5],
+                                weight: r[6],
+                                activity: r[7],
+                                condition: r[8],
+                                selectedIds: JSON.parse(r[9] || '["belly"]'),
+                                dietPref: r[10],
+                                price: r[11],
+                                bmi: r[12],
+                                calorieTarget: r[13],
+                                status: r[14],
+                                savedAt: r[15]
+                            }));
+                            safeSetStorage(STORAGE_KEY_CRM_JSON, JSON.stringify(crmClients));
+                            persistSqliteToStorage();
+                            renderCrmCards();
+                            showToast(`Imported ${crmClients.length} clients from SQLite!`);
+                        }
+                    } catch (err) {
+                        showToast('Invalid SQLite file');
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            }
+        }
+
+        // Render Mobile-Optimized Patient Cards
+        function renderCrmCards() {
+            const container = document.getElementById('crmMobileList');
+            const query = (document.getElementById('crmSearchInput')?.value || '').toLowerCase();
+            document.getElementById('crmCountBadge').textContent = `${crmClients.length} Records`;
+            document.getElementById('navDbCount').textContent = crmClients.length;
+
+            const filtered = crmClients.filter(c =>
+                c.name.toLowerCase().includes(query) ||
+                (c.condition && c.condition.toLowerCase().includes(query)) ||
+                (c.phone && c.phone.includes(query))
+            );
+
+            if (filtered.length === 0) {
+                container.innerHTML = `
+                    <div class="bg-white rounded-2xl p-6 text-center border border-slate-200">
+                        <i class="fa-solid fa-folder-open text-2xl text-slate-300 mb-2"></i>
+                        <p class="text-xs font-bold text-slate-500">No patient records found.</p>
+                        <p class="text-[11px] text-slate-400 mt-0.5">Tap "Save to DB" on Tab 1 to store patients.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = filtered.map(c => {
+                const isPaid = c.status === 'Paid';
+                const statusBtn = isPaid
+                    ? `<button onclick="toggleClientPaidStatus('${c.id}')" class="px-2.5 py-1 rounded-full text-[11px] font-extrabold bg-emerald-100 text-medigreen border border-emerald-300">✅ Paid</button>`
+                    : `<button onclick="toggleClientPaidStatus('${c.id}')" class="px-2.5 py-1 rounded-full text-[11px] font-extrabold bg-amber-100 text-amber-800 border border-amber-300">⏳ Pending</button>`;
+
+                return `
+                    <div class="bg-white rounded-2xl p-3.5 shadow-sm border border-slate-200 space-y-2">
+                        <div class="flex items-start justify-between gap-2">
+                            <div>
+                                <h4 class="font-extrabold text-slate-800 text-sm flex items-center gap-1.5">
+                                    <span>${c.name}</span>
+                                    <span class="text-[11px] font-semibold text-slate-400">(${c.age}y, ${c.gender})</span>
+                                </h4>
+                                <p class="text-[10px] text-slate-400 font-medium">${c.savedAt || ''} • Rs. ${c.price}/- ${c.phone ? '• ' + c.phone : ''}</p>
+                            </div>
+                            ${statusBtn}
+                        </div>
+
+                        <div class="grid grid-cols-3 gap-1.5 bg-slate-50 p-2 rounded-xl text-center border border-slate-100">
+                            <div>
+                                <span class="text-[9px] text-slate-400 uppercase font-bold block">Biometrics</span>
+                                <span class="text-xs font-extrabold text-slate-700">${c.height}cm • ${c.weight}kg</span>
+                            </div>
+                            <div>
+                                <span class="text-[9px] text-slate-400 uppercase font-bold block">Asian BMI</span>
+                                <span class="text-xs font-extrabold text-medinavy">${c.bmi} kg/m²</span>
+                            </div>
+                            <div>
+                                <span class="text-[9px] text-slate-400 uppercase font-bold block">Calorie Target</span>
+                                <span class="text-xs font-extrabold text-medigreen">${c.calorieTarget} kcal</span>
+                            </div>
+                        </div>
+
+                        <p class="text-[11px] sinhala-font text-slate-600 bg-slate-50/70 px-2.5 py-1.5 rounded-lg border border-slate-100">
+                            🎯 ${c.condition}
+                        </p>
+
+                        <div class="flex items-center gap-1.5 pt-1">
+                            <button onclick="reloadClientFromCrm('${c.id}', false)" class="flex-1 py-2 rounded-xl bg-slate-100 active:bg-slate-200 text-slate-800 text-xs font-bold">
+                                <i class="fa-solid fa-pen-to-square mr-1"></i>Edit
+                            </button>
+                            <button onclick="reloadClientFromCrm('${c.id}', true); selectScenario(1);" class="flex-1 py-2 rounded-xl bg-medinavy text-white text-xs font-bold">
+                                <i class="fa-brands fa-whatsapp mr-1 text-emerald-300"></i>Scripts
+                            </button>
+                            <button onclick="reloadClientFromCrm('${c.id}', true); selectScenario(9);" class="flex-1 py-2 rounded-xl bg-amber-500 text-white text-xs font-extrabold">
+                                🤖 AI Plan
+                            </button>
+                            <button onclick="deleteCrmClient('${c.id}')" class="p-2 rounded-xl text-slate-400 hover:text-rose-600">
+                                <i class="fa-solid fa-trash-can text-xs"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Toast Helper
+        let toastTimer;
+        function showToast(message) {
+            const box = document.getElementById('toastBox');
+            document.getElementById('toastText').textContent = message;
+            box.classList.remove('-translate-y-20', 'opacity-0');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => {
+                box.classList.add('-translate-y-20', 'opacity-0');
+            }, 2400);
+        }
+
+        // Initialize App on Load
+        window.onload = function () {
+            renderConditionChips();
+            loadBankSettings();
+            loadWebhookUrl();
+            loadCrmClients();
+            initSqliteDatabase();
+            selectScenario(1);
+            recalculateAll();
+        };
+    </script>
+</body>
+</html>
